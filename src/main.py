@@ -15,7 +15,7 @@ import threading
 
 from src.api import test_api_connection
 from src.config import load_config
-from src.log import setup_logging
+from src.log import setup_logging, add_betterstack_handler
 from src.notifiers import TelegramNotifier, EmailNotifier
 from src.poller import poll_loop
 
@@ -74,6 +74,12 @@ def main() -> None:
     test_mode = "--test" in args or "-test" in args
 
     config = load_config()
+
+    # Enable Better Stack logging if configured
+    add_betterstack_handler(
+        source_token=config.betterstack_source_token,
+        ingesting_host=config.betterstack_ingesting_host,
+    )
 
     if test_mode:
         sys.exit(run_test(config))

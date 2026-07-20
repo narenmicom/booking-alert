@@ -41,6 +41,10 @@ class Config:
     smtp_password: str = ""
     alert_email_to: str = ""
 
+    # Better Stack logging (from .env)
+    betterstack_source_token: str = ""
+    betterstack_ingesting_host: str = "in.logtail.com"
+
 
 def load_config(path: str = "config.yaml") -> Config:
     with open(path, "r") as f:
@@ -69,4 +73,6 @@ def load_config(path: str = "config.yaml") -> Config:
         smtp_user=os.getenv("SMTP_USER", ""),
         smtp_password=os.getenv("SMTP_PASSWORD", ""),
         alert_email_to=os.getenv("ALERT_EMAIL_TO", ""),
+        betterstack_source_token=os.getenv("BETTERSTACK_SOURCE_TOKEN", ""),
+        betterstack_ingesting_host=os.getenv("BETTERSTACK_INGESTING_HOST", "in.logtail.com"),
     )
