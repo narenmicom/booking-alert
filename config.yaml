@@ -1,0 +1,16 @@
+pvr:
+  url: "https://api3.pvrcinemas.com/api/v1/booking/content/csessions"
+  city: "Chennai"
+  cid: "388"
+  lat: "12.883208"
+  lng: "80.3613280"
+  dates:
+    - "2026-07-22"
+films:
+  - id: "37656"
+    name: "THE ODYSSEY (ENGLISH IMAX)"
+  # - id: "37652"
+  #   name: "THE ODYSSEY (ENGLISH)"
+
+poll_interval_seconds: 300
+state_file: "alerted_sessions.json"

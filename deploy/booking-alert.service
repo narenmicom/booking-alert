@@ -1,0 +1,18 @@
+[Unit]
+Description=PVR Booking Alert
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=/opt/booking-alert
+ExecStart=/opt/booking-alert/.venv/bin/python -m src.main
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=booking-alert
+
+[Install]
+WantedBy=multi-user.target
