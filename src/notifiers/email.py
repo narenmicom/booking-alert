@@ -29,7 +29,7 @@ class EmailNotifier(Notifier):
         self._password = password
         self._to = to_addr
         self._cooldown = cooldown_seconds
-        self._last_sent: float = 0.0
+        self._last_sent: dict[tuple[str, str, str], float] = {}
 
     @property
     def name(self) -> str:
@@ -59,8 +59,9 @@ class EmailNotifier(Notifier):
             logger.debug("Email not configured \u2014 skipping")
             return False
 
-        now = time.time()
-        if now - self._last_sent < self._cooldown:
+        watch_key = self._watch_key(show, film_name)
+        last_sent = self._last_sent.get(watch_key)
+        if last_sent is not None and time.monotonic() - last_sent < self._cooldown:
             logger.debug("Email rate-limited \u2014 skipping")
             return False
 
@@ -77,7 +78,7 @@ class EmailNotifier(Notifier):
                 server.login(self._user, self._password)
                 server.send_message(msg)
 
-            self._last_sent = time.time()
+            self._last_sent[watch_key] = time.monotonic()
             logger.info("Email alert sent for %s", film_name)
             return True
         except smtplib.SMTPException as e:
@@ -94,7 +95,11 @@ class EmailNotifier(Notifier):
         sid = show.get("sessionId", "?")
 
         lines = [f"Movie: {film_name}"]
+        if show.get("theatreId"):
+            lines.append(f"Cinema ID: {show['theatreId']}")
         lines.append(f"Screen: {theatre}")
+        if show.get("showDate"):
+            lines.append(f"Date: {show['showDate']}")
         lines.append(f"Time: {show_time}")
         if fmt:
             lines.append(f"Format: {fmt}")

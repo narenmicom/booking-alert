@@ -25,7 +25,7 @@ class TelegramNotifier(Notifier):
     ) -> None:
         self._token = bot_token
         self._cooldown = cooldown_seconds
-        self._last_sent: float = 0.0
+        self._last_sent: dict[tuple[str, str, str], float] = {}
         self._chat_ids: list[str] = []
 
     @property
@@ -124,8 +124,9 @@ class TelegramNotifier(Notifier):
             logger.warning("No Telegram chats discovered \u2014 skipping")
             return False
 
-        now = time.time()
-        if now - self._last_sent < self._cooldown:
+        watch_key = self._watch_key(show, film_name)
+        last_sent = self._last_sent.get(watch_key)
+        if last_sent is not None and time.monotonic() - last_sent < self._cooldown:
             logger.debug("Telegram rate-limited \u2014 skipping")
             return False
 
@@ -148,7 +149,7 @@ class TelegramNotifier(Notifier):
                 logger.error("Telegram send to chat %s failed: %s", cid, e)
 
         if sent_any:
-            self._last_sent = time.time()
+            self._last_sent[watch_key] = time.monotonic()
         return sent_any
 
     @staticmethod
@@ -162,7 +163,11 @@ class TelegramNotifier(Notifier):
         now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
         lines = [f"\U0001f3ac <b>{film_name}</b>"]
+        if show.get("theatreId"):
+            lines.append(f"Cinema ID: {show['theatreId']}")
         lines.append(f"\U0001f4cd Screen: {theatre}")
+        if show.get("showDate"):
+            lines.append(f"Date: {show['showDate']}")
         lines.append(f"\u23f0 Time: {show_time}")
         if fmt:
             lines.append(f"\U0001f39e\ufe0f Format: {fmt}")

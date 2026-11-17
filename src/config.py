@@ -12,15 +12,16 @@ load_dotenv()
 
 @dataclass
 class FilmWatch:
-    id: str
     name: str
+    ids: List[str] = field(default_factory=list)
+    dates: List[str] = field(default_factory=list)
 
 
 @dataclass
 class PvrConfig:
     url: str
     city: str
-    cid: str
+    cids: List[str]
     lat: str
     lng: str
     dates: List[str] = field(default_factory=list)
@@ -46,21 +47,48 @@ class Config:
     betterstack_ingesting_host: str = "in.logtail.com"
 
 
+def _normalize_ids(raw_film: dict) -> List[str]:
+    """Accept id (string) and/or ids (list) from YAML; return a list of strings."""
+    ids: List[str] = []
+    if "id" in raw_film and raw_film["id"]:
+        ids.append(str(raw_film["id"]))
+    if "ids" in raw_film and raw_film["ids"]:
+        ids.extend(str(i) for i in raw_film["ids"])
+    # de-duplicate while preserving order
+    seen: set[str] = set()
+    unique: List[str] = []
+    for i in ids:
+        if i not in seen:
+            seen.add(i)
+            unique.append(i)
+    return unique
+
+
 def load_config(path: str = "config.yaml") -> Config:
     with open(path, "r") as f:
         raw = yaml.safe_load(f)
 
     pvr_raw = raw["pvr"]
+    raw_cids = pvr_raw.get("cids", [pvr_raw.get("cid")])
+    if not isinstance(raw_cids, list) or not raw_cids or any(not cid for cid in raw_cids):
+        raise ValueError("Configure at least one cinema in pvr.cids or pvr.cid")
     pvr = PvrConfig(
         url=pvr_raw["url"],
         city=pvr_raw["city"],
-        cid=pvr_raw["cid"],
+        cids=list(dict.fromkeys(str(cid) for cid in raw_cids)),
         lat=pvr_raw.get("lat", ""),
         lng=pvr_raw.get("lng", ""),
         dates=pvr_raw.get("dates", []),
     )
 
-    films = [FilmWatch(id=f["id"], name=f["name"]) for f in raw.get("films", [])]
+    films = [
+        FilmWatch(
+            name=f["name"],
+            ids=_normalize_ids(f),
+            dates=list(f.get("dates", [])),
+        )
+        for f in raw.get("films", [])
+    ]
 
     return Config(
         pvr=pvr,

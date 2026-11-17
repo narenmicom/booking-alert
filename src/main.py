@@ -12,12 +12,13 @@ from __future__ import annotations
 import signal
 import sys
 import threading
+from datetime import date
 
 from src.api import test_api_connection
 from src.config import load_config
 from src.log import setup_logging, add_betterstack_handler
 from src.notifiers import TelegramNotifier, EmailNotifier
-from src.poller import poll_loop
+from src.poller import build_date_film_map, poll_loop
 
 logger = setup_logging()
 
@@ -28,16 +29,19 @@ def run_test(config) -> int:
 
     # 1. PVR API
     logger.info("=== Testing PVR API ===")
-    test_date = config.pvr.dates[0] if config.pvr.dates else "2026-07-22"
-    if not test_api_connection(
-        url=config.pvr.url,
-        city=config.pvr.city,
-        cid=config.pvr.cid,
-        lat=config.pvr.lat,
-        lng=config.pvr.lng,
-        date=test_date,
-    ):
-        failures += 1
+    fallback_date = next(iter(config.pvr.dates), date.today().isoformat())
+    test_date = next(iter(build_date_film_map(config)), fallback_date)
+    for cid in config.pvr.cids:
+        logger.info("Testing PVR cinema %s for %s", cid, test_date)
+        if not test_api_connection(
+            url=config.pvr.url,
+            city=config.pvr.city,
+            cid=cid,
+            lat=config.pvr.lat,
+            lng=config.pvr.lng,
+            date=test_date,
+        ):
+            failures += 1
 
     # 2. Telegram
     logger.info("=== Testing Telegram ===")
@@ -89,8 +93,8 @@ def main() -> None:
         logger.warning("No films configured in config.yaml \u2014 nothing to watch")
         sys.exit(0)
 
-    if not config.pvr.dates:
-        logger.warning("No dates configured in config.yaml \u2014 nothing to poll")
+    if not build_date_film_map(config):
+        logger.warning("No dates configured for any film \u2014 nothing to poll")
         sys.exit(0)
 
     # Build notifiers

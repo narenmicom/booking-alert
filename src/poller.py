@@ -1,15 +1,31 @@
 from __future__ import annotations
 
 import threading
-from typing import List
+from collections import OrderedDict
+from itertools import product
+from typing import Dict, List
 
 from src.api import fetch_sessions, PvrApiError
-from src.config import Config
+from src.config import Config, FilmWatch
 from src.filter import find_matching_shows
 from src.log import setup_logging
 from src.notifiers.base import Notifier
 
 logger = setup_logging()
+
+
+def _effective_dates(film: FilmWatch, global_dates: List[str]) -> List[str]:
+    """Per-film dates override the global fallback when set."""
+    return film.dates if film.dates else list(global_dates)
+
+
+def build_date_film_map(config: Config) -> "OrderedDict[str, List[FilmWatch]]":
+    """Map each unique effective date to the films interested in it."""
+    date_to_films: "OrderedDict[str, List[FilmWatch]]" = OrderedDict()
+    for film in config.films:
+        for date in _effective_dates(film, config.pvr.dates):
+            date_to_films.setdefault(date, []).append(film)
+    return date_to_films
 
 
 def poll_loop(
@@ -19,18 +35,19 @@ def poll_loop(
 ) -> None:
     """
     Main polling loop \u2014 runs every POLL_INTERVAL seconds.
-    Fetches sessions for all configured dates, checks for target films,
-    and sends alerts for all matching shows every cycle.
+    Fetches sessions for each watched date and cinema and alerts on matching shows.
     """
+    date_to_films = build_date_film_map(config)
+
     logger.info(
-        "Polling started \u2014 interval=%ds, films=%s, dates=%s",
+        "Polling started \u2014 interval=%ds, cinemas=%s, dates=%s",
         config.poll_interval_seconds,
-        [f.name for f in config.films],
-        config.pvr.dates,
+        config.pvr.cids,
+        {d: [f.name for f in fs] for d, fs in date_to_films.items()},
     )
 
     while not stop_event.is_set():
-        _run_cycle(config, notifiers)
+        _run_cycle(config, notifiers, date_to_films)
         stop_event.wait(timeout=config.poll_interval_seconds)
 
     logger.info("Polling stopped gracefully")
@@ -39,26 +56,31 @@ def poll_loop(
 def _run_cycle(
     config: Config,
     notifiers: List[Notifier],
+    date_to_films: Dict[str, List[FilmWatch]],
 ) -> None:
-    """Single poll cycle: fetch for each date \u2192 filter \u2192 alert."""
-    all_matches: list[tuple] = []
+    """Fetch and check each cinema and date pair."""
+    all_matches = []
 
-    for date in config.pvr.dates:
+    for (date, films_for_date), cid in product(date_to_films.items(), config.pvr.cids):
         try:
             response = fetch_sessions(
                 url=config.pvr.url,
                 city=config.pvr.city,
-                cid=config.pvr.cid,
+                cid=cid,
                 lat=config.pvr.lat,
                 lng=config.pvr.lng,
                 date=date,
             )
         except PvrApiError as e:
-            logger.error(str(e))
+            logger.error("Cinema %s: %s", cid, e)
             continue
 
-        matches = find_matching_shows(response, config.films)
-        all_matches.extend(matches)
+        for film, show in find_matching_shows(response, films_for_date):
+            if str(show.get("theatreId") or cid) != cid:
+                continue
+            if (show.get("showDate") or date) != date:
+                continue
+            all_matches.append((film, {**show, "theatreId": cid, "showDate": date}))
 
     if not all_matches:
         logger.info("No matching shows found")
