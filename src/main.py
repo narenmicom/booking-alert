@@ -3,12 +3,14 @@
 Booking Alert \u2014 polls PVR API for film sessions and sends alerts.
 
 Usage:
-    python -m src.main              # run the poller
-    python -m src.main --test       # test connectivity to PVR + Telegram + Email
+    python -m src.main                  # run the poller
+    python -m src.main --test           # test connectivity to PVR + Telegram + Email
+    python -m src.main --test-telegram  # send a Telegram test message
 """
 
 from __future__ import annotations
 
+import os
 import signal
 import sys
 import threading
@@ -21,6 +23,15 @@ from src.notifiers import TelegramNotifier, EmailNotifier
 from src.poller import build_date_film_map, poll_loop
 
 logger = setup_logging()
+
+
+def test_telegram(bot_token: str) -> bool:
+    logger.info("=== Testing Telegram ===")
+    telegram = TelegramNotifier(bot_token=bot_token)
+    if not telegram.test_connection():
+        return False
+    telegram.discover_chat_ids()
+    return telegram.send_test_message()
 
 
 def run_test(config) -> int:
@@ -44,14 +55,8 @@ def run_test(config) -> int:
             failures += 1
 
     # 2. Telegram
-    logger.info("=== Testing Telegram ===")
-    tg = TelegramNotifier(bot_token=config.telegram_bot_token)
-    if not tg.test_connection():
+    if not test_telegram(config.telegram_bot_token):
         failures += 1
-    else:
-        tg.discover_chat_ids()
-        if not tg.send_test_message():
-            failures += 1
 
     # 3. Email
     logger.info("=== Testing Email ===")
@@ -75,6 +80,10 @@ def run_test(config) -> int:
 
 def main() -> None:
     args = sys.argv[1:]
+    if "--test-telegram" in args:
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        sys.exit(0 if test_telegram(bot_token) else 1)
+
     test_mode = "--test" in args or "-test" in args
 
     config = load_config()
